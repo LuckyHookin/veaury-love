@@ -196,11 +196,24 @@ class VueComponentLoader extends React.Component {
     // remove portal
     if (this.vuePortal) {
       this.parentVueWrapperRef.__veauryRemoveVuePortal__(this.vuePortal)
+      // Reset the internal state, so that the vue instance can be re-created
+      // if the component is mounted again.
+      // Since React 18, <StrictMode> simulates an unmount -> remount cycle
+      // in development mode, so this method may be invoked before the
+      // component is actually destroyed.
+      this.vuePortal = null
+      this.parentVueWrapperRef = null
+      this.vueCreated = false
+      this.__veauryVueInstance__ = null
+      this.__veauryVueRef__ = null
+      random.pool.delete(this.__veauryVueTargetId__)
       return
     }
     this.__veauryVueInstance__ && this.__veauryVueInstance__.$.appContext.app.unmount()
     random.pool.delete(this.__veauryVueTargetId__)
     this.vueCreated = false
+    this.__veauryVueInstance__ = null
+    this.__veauryVueRef__ = null
   }
 
   componentDidMount() {
@@ -211,6 +224,16 @@ class VueComponentLoader extends React.Component {
   // The dom object of the component will be received through the ref callback of the react component,
   // and the context has been bound in the constructor of the class
   __veauryCreateVueInstance__ (targetElement) {
+    // Since React 19, ref callbacks can be detached by calling them with 'null'
+    // (this always happens before the ref is re-attached, and <StrictMode> in
+    // development mode re-runs ref callbacks: ref(el) -> ref(null) -> ref(el)).
+    // In this case nothing should be done:
+    // - If the vue instance is still alive (mounted), keep it as is, so the
+    //   following ref attach (or 'componentDidMount') reuses it.
+    // - If it has already been destroyed (in 'componentWillUnmount'), keep
+    //   'vueCreated' as false, so the following ref attach (or
+    //   'componentDidMount') can re-create the vue instance.
+    if (targetElement == null) return
     if (this.vueCreated) return
     this.vueCreated = true
     const VueContainerInstance = this
